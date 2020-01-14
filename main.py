@@ -22,12 +22,13 @@ class Map:
   def get(self, x, y):
     if(x < 0 or x >= self.width or y < 0 or y >= self.height):
       return Map.INVALID
-    return self.map[y*self.height + x]
+    return self.map[y*self.width + x]
     
   def set(self, x, y, num):
     if(x < 0 or x >= self.width or y < 0 or y >= self.height):
       return Map.INVALID
-    self.map[y*self.height + x] = num
+    self.map[y*self.width + x] = num
+    #print("sets (" + str(x) + ", " + str(y) + ") to " + str(num)) 
     return Map.VALID
   
 mapv2 = Map(SCREEN_WIDTH,SCREEN_HEIGHT)
@@ -56,7 +57,7 @@ class Water:
     mapv2.set(self.position.x,self.position.y, WATER)
     
   def draw(self):
-    pyxel.pix(self.position.x,self.position.y,5 )
+    pyxel.pix(self.position.x,self.position.y,5)
     
   def try_go_bottom_left(self):
     res = mapv2.get(self.position.x - 1, self.position.y + 1)
@@ -74,6 +75,7 @@ class Water:
       
   def try_go_bottom(self):
     res = mapv2.get(self.position.x, self.position.y + 1)
+    #print("old x: " + str(self.position.x) + " old y: " + str(self.position.y) + " res: " + str(res))
     if res == EMPTY:
       self.position.y += 1
     return res
@@ -95,7 +97,7 @@ class Water:
   def node_0(self):
     res = self.try_go_bottom()
     if res == Map.INVALID:
-      return 4 
+      return 4
     elif res == EMPTY:
       return 7
     else:
@@ -110,19 +112,11 @@ class Water:
   #bot left
   def node_2(self):
     res = self.try_go_bottom_left()
-    self.tried_botleft = True
-    if self.tried_botright == True:
-      return 4
-    else:
-      return 3
+    return 4
   # bot right
   def node_3(self):
     res = self.try_go_bottom_right()
-    self.tried_botright = True
-    if self.tried_botleft == True:
-      return 4
-    else:
-      return 2
+    return 4
   # rand for left / right
   def node_4(self):
     num = random.randint(0, 2)
@@ -135,19 +129,11 @@ class Water:
   # left
   def node_5(self):
     res = self.try_go_left()
-    self.tried_left = True
-    if self.tried_right == True:
-      return 7
-    else:
-      return 6
+    return 7
   # right
   def node_6(self):
     res = self.try_go_right()
-    self.tried_right = True
-    if self.tried_left == True:
-      return 7
-    else:
-      return 5
+    return 7
   # setting positions in the map
   def node_7(self):
     mapv2.set(self.original_x,self.original_y, EMPTY)
@@ -159,10 +145,6 @@ class Water:
  
   def update(self):
     self.updating = True
-    self.tried_botleft = False
-    self.tried_botright = False
-    self.tried_left = False
-    self.tried_right = False
     self.original_x = self.position.x
     self.original_y = self.position.y
     res = 0
@@ -176,21 +158,25 @@ class App:
         pyxel.mouse(True)
         self.sandarray = []
         self.waterarray = []
+        self.Paused = False
         pyxel.run(self.update, self.draw)
     
     def update(self): 
         if pyxel.btnp(pyxel.KEY_Q): 
             pyxel.quit()
-                
+            
         if pyxel.btnp(pyxel.MOUSE_RIGHT_BUTTON, 1, 1):
-            for i in range(-1,1):
-              for j in range(-1,1):
+            for i in range(-50,50):
+              for j in range(-30,30):
                 if(mapv2.get(pyxel.mouse_x + i,pyxel.mouse_y + j) == EMPTY):
-                  self.waterarray.append(Water(pyxel.mouse_x+ i, pyxel.mouse_y + j))
-                
-
-        for y in self.waterarray:
-            y.update()
+                    self.waterarray.append(Water(pyxel.mouse_x + i, pyxel.mouse_y + j))
+        
+        if pyxel.btnp(pyxel.KEY_P):
+            self.Paused = not self.Paused
+        
+        if self.Paused == False:
+            for y in self.waterarray:
+                y.update()
 
     def draw(self):
         pyxel.cls(0)
