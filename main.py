@@ -4,13 +4,13 @@ import pyxel
 import array
 import random
 
-SCREEN_WIDTH = 255 
+SCREEN_WIDTH = 40
 SCREEN_HEIGHT = 120
 EMPTY = 0
-SAND = 1
-WATER = 2
-BIRD = 3
-
+VAPOR = 8
+WATER = 5
+SLIMECORE = 6
+SLIME = 7
 class Map:
   INVALID = -1
   VALID = 0
@@ -49,15 +49,29 @@ class Vec2_normalized:
     self.x = x / self.magnitude 
     self.y = y / self.magnitude
 
-
+class Node:
+    def __init__(self, cost, position):
+        self.position = position
+        self.cost = cost
+        
+def byCost(elem):
+    return elem.cost
     
-class Water:
-  def __init__(self, px, py):
+class Pixel:
+  def __init__(self, px, py, type):
     self.position = Vec2(px, py)
-    mapv2.set(self.position.x,self.position.y, WATER)
+    self.type = type
+    mapv2.set(self.position.x,self.position.y, type)
+    if(type == SLIME):
+        self.offset = Vec2(0,0)
+    if(type == SLIMECORE):
+        self.slimebod = [Pixel(px,py,SLIME) for x in range(25)]
     
   def draw(self):
-    pyxel.pix(self.position.x,self.position.y,5)
+    pyxel.pix(self.position.x,self.position.y, self.type)
+    if(self.type == SLIMECORE):
+        for x in self.slimebod:
+            x.draw()
     
   def try_go_bottom_left(self):
     res = mapv2.get(self.position.x - 1, self.position.y + 1)
@@ -71,6 +85,20 @@ class Water:
     if res == EMPTY:
       self.position.x += 1
       self.position.y += 1
+    return res
+    
+  def try_go_top_left(self):
+    res = mapv2.get(self.position.x - 1, self.position.y - 1)
+    if res == EMPTY:
+      self.position.x -= 1
+      self.position.y -= 1
+    return res
+    
+  def try_go_top_right(self):
+    res = mapv2.get(self.position.x + 1, self.position.y - 1)
+    if res == EMPTY:
+      self.position.x += 1
+      self.position.y -= 1
     return res
       
   def try_go_bottom(self):
@@ -92,8 +120,15 @@ class Water:
       self.position.x += 1
     return res
  
+  def try_go_top(self):
+    res = mapv2.get(self.position.x, self.position.y - 1)
+    #print("old x: " + str(self.position.x) + " old y: " + str(self.position.y) + " res: " + str(res))
+    if res == EMPTY:
+      self.position.y -= 1
+    return res
+    
   ### this is the state machine for water sim ###
-  # initial node [ check if can go down ] if cannot, try other nodes
+  # try go down
   def node_0(self):
     res = self.try_go_bottom()
     if res == Map.INVALID:
@@ -137,19 +172,109 @@ class Water:
   # setting positions in the map
   def node_7(self):
     mapv2.set(self.original_x,self.original_y, EMPTY)
-    mapv2.set(self.position.x,self.position.y, WATER)
+    mapv2.set(self.position.x,self.position.y, self.type)
     self.updating = False
     return 0
-    
-  FUNC_MAP = { 0: node_0, 1: node_1, 2: node_2, 3: node_3, 4: node_4, 5: node_5, 6: node_6, 7: node_7 }
- 
+  # go up
+  def node_8(self):
+    res = self.try_go_top()
+    if res == Map.INVALID:
+      return 4
+    elif res == EMPTY:
+      return 7
+    else:
+      return 9
+  # rand for top left / top right
+  def node_9(self):
+    num = random.randint(0, 1)
+    if num == 1:
+      return 10
+    else:
+      return 11
+  # top left
+  def node_10(self):
+    res = self.try_go_top_left()
+    return 4
+  # top right
+  def node_11(self):
+    res = self.try_go_top_right()
+    return 4
+  
+  FUNC_MAP = { 0: node_0, 1: node_1, 2: node_2, 3: node_3, 4: node_4, 5: node_5, 6: node_6, 7: node_7, 8: node_8, 9: node_9, 10: node_10, 11: node_11 }
+  START_NODE = { WATER: 0, VAPOR: 8 , SLIMECORE: 7, SLIME: 7}
+  
+  def VAPOR_SPECIFIC_UPDATE(self):
+    num = random.randint(0,200)
+    if num == 5:
+      if mapv2.get(self.position.x , self.position.y + 1) == EMPTY:
+        num = mapv2.get(self.position.x - 1, self.position.y - 1) + \
+                mapv2.get(self.position.x + 1, self.position.y - 1) + \
+                mapv2.get(self.position.x, self.position.y - 1)
+        if (num == 24):
+            self.type = WATER
+    #if(mapv2.get(self.position.x, self.position.y - 1) == Map.INVALID):
+    #    self.type = WATER
+        
+  def WATER_SPECIFIC_UPDATE(self):
+    num = random.randint(0,200)
+    if num == 5:
+      if mapv2.get(self.position.x , self.position.y - 1) == EMPTY:
+        num = mapv2.get(self.position.x - 1, self.position.y + 1) + \
+                mapv2.get(self.position.x + 1, self.position.y + 1) + \
+                mapv2.get(self.position.x, self.position.y + 1)
+        if (num == 15):
+            self.type = VAPOR
+    #if(mapv2.get(self.position.x, self.position.y + 1) == Map.INVALID):
+    #    self.type = VAPOR
+  
+  def SLIMECORE_SPECIFIC_UPDATE(self):
+    if pyxel.btnp(pyxel.KEY_A,1,1): 
+        if(mapv2.get(self.position.x - 1,self.position.y) == EMPTY):
+            mapv2.set(self.position.x, self.position.y, EMPTY)
+            self.position.x -= 1
+            mapv2.set(self.position.x, self.position.y, SLIMECORE)
+    if pyxel.btnp(pyxel.KEY_D,1,1): 
+        if(mapv2.get(self.position.x + 1,self.position.y) == EMPTY):
+            mapv2.set(self.position.x, self.position.y, EMPTY)
+            self.position.x += 1
+            mapv2.set(self.position.x, self.position.y, SLIMECORE)
+     
+    for x in self.slimebod:
+        x.position.x = self.position.x
+        x.position.y = self.position.y
+        x.offset.x += random.randint(-1,1)
+        x.offset.y += random.randint(-1,1)
+        x.update()
+         
+  def SLIME_SPECIFIC_UPDATE(self):
+    if(abs(self.offset.x) + abs(self.offset.y) > 5):
+        self.offset.x = random.randint(-1,1)
+        self.offset.y = random.randint(-1,1)
+        
+    self.position.x += self.offset.x
+    self.position.y += self.offset.y
+  
+  SPECIFIC_UPDATE = { 
+    WATER: WATER_SPECIFIC_UPDATE, 
+    VAPOR: VAPOR_SPECIFIC_UPDATE, 
+    SLIMECORE: SLIMECORE_SPECIFIC_UPDATE, 
+    SLIME: SLIME_SPECIFIC_UPDATE
+    }
+  
   def update(self):
     self.updating = True
     self.original_x = self.position.x
     self.original_y = self.position.y
-    res = 0
+    res = Pixel.START_NODE[self.type]
+    
     while self.updating:
-      res = self.FUNC_MAP[res](self)
+      res = Pixel.FUNC_MAP[res](self)
+
+    Pixel.SPECIFIC_UPDATE[self.type](self)
+    
+pixelarray = []
+
+
 
 class App: 
     def __init__(self): 
@@ -157,30 +282,35 @@ class App:
         # shows the mouse
         pyxel.mouse(True)
         self.sandarray = []
-        self.waterarray = []
         self.Paused = False
         pyxel.run(self.update, self.draw)
     
     def update(self): 
         if pyxel.btnp(pyxel.KEY_Q): 
             pyxel.quit()
-            
-        if pyxel.btnp(pyxel.MOUSE_RIGHT_BUTTON, 1, 1):
-            for i in range(-50,50):
-              for j in range(-30,30):
-                if(mapv2.get(pyxel.mouse_x + i,pyxel.mouse_y + j) == EMPTY):
-                    self.waterarray.append(Water(pyxel.mouse_x + i, pyxel.mouse_y + j))
+        if pyxel.btnp(pyxel.MOUSE_LEFT_BUTTON):
+            pixelarray.append(Pixel(pyxel.mouse_x, pyxel.mouse_y, SLIMECORE))
+        #if pyxel.btnp(pyxel.MOUSE_LEFT_BUTTON, 1, 1):
+        #    for i in range(-5,5):
+        #      for j in range(-5,5):
+        #        if(mapv2.get(pyxel.mouse_x + i,pyxel.mouse_y + j) == EMPTY):
+        #            pixelarray.append(Pixel(pyxel.mouse_x + i, pyxel.mouse_y + j, WATER) )
+        #if pyxel.btnp(pyxel.MOUSE_RIGHT_BUTTON, 1, 1):
+        #    for i in range(-5,5):
+        #      for j in range(-5,5):
+        #        if(mapv2.get(pyxel.mouse_x + i,pyxel.mouse_y + j) == EMPTY):
+        #            pixelarray.append(Pixel(pyxel.mouse_x + i, pyxel.mouse_y + j, VAPOR) )
         
         if pyxel.btnp(pyxel.KEY_P):
             self.Paused = not self.Paused
         
         if self.Paused == False:
-            for y in self.waterarray:
+            for y in pixelarray:
                 y.update()
 
     def draw(self):
         pyxel.cls(0)
-        for y in self.waterarray:
+        for y in pixelarray:
             y.draw()
     
 App()
